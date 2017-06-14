@@ -18,11 +18,11 @@ package eus.ixa.ixa.pipe.doc;
 
 import ixa.kaflib.KAFDocument;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.StringReader;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -74,21 +74,20 @@ public class DocClassifierServer {
       socketServer = new ServerSocket(port);
 
       while (true) {
-        System.out.println("-> Connected and listening to port " + port);
-        try (Socket activeSocket = socketServer.accept();
-            DataInputStream inFromClient = new DataInputStream(
-                activeSocket.getInputStream());
-            DataOutputStream outToClient = new DataOutputStream(
-                new BufferedOutputStream(activeSocket.getOutputStream()));) {
-          System.out.println("-> Received a  connection from: " + activeSocket);
-          // get data from client
-          String stringFromClient = getClientData(inFromClient);
-          // annotate
-          String kafToString = getAnnotations(annotator, stringFromClient);
-          // send to server
-          sendDataToServer(outToClient, kafToString);
-        }
+    	  System.out.println("-> Connected and listening to port " + port);
+          try (Socket activeSocket = socketServer.accept();
+        		  BufferedReader inFromClient = new BufferedReader(new InputStreamReader(activeSocket.getInputStream(), "UTF-8"));
+        		  BufferedWriter outToClient = new BufferedWriter(new OutputStreamWriter(activeSocket.getOutputStream(), "UTF-8"));) {
+            System.out.println("-> Received a  connection from: " + activeSocket);
+            // get data from client
+            String stringFromClient = getClientData(inFromClient);
+            // annotate
+            String kafToString = getAnnotations(annotator, stringFromClient);
+            // send to server
+            sendDataToClient(outToClient, kafToString);
+          }
       }
+      
     } catch (IOException | JDOMException e) {
       e.printStackTrace();
     } finally {
@@ -101,25 +100,26 @@ public class DocClassifierServer {
     }
   }
 
+  
   /**
    * Read data from the client and output to a String.
-   * 
-   * @param inFromClient
-   *          the client inputstream
+   * @param inFromClient the client inputstream
    * @return the string from the client
    */
-  private String getClientData(DataInputStream inFromClient) {
-    // get data from client and build a string with it
+  private String getClientData(BufferedReader inFromClient) {
     StringBuilder stringFromClient = new StringBuilder();
     try {
-      boolean endOfClientFile = inFromClient.readBoolean();
-      String line = "";
-      while (!endOfClientFile) {
-        line = inFromClient.readUTF();
+      String line;
+      while ((line = inFromClient.readLine()) != null) {
+        if (line.matches("<ENDOFDOCUMENT>")) {
+          break;
+        }
         stringFromClient.append(line).append("\n");
-        endOfClientFile = inFromClient.readBoolean();
+        if (line.matches("</NAF>")) {
+          break;
+        }
       }
-    } catch (IOException e) {
+    }catch (IOException e) {
       e.printStackTrace();
     }
     return stringFromClient.toString();
@@ -135,13 +135,12 @@ public class DocClassifierServer {
    * @throws IOException
    *           if io error
    */
-  private void sendDataToServer(DataOutputStream outToClient,
-      String kafToString) throws IOException {
 
-    byte[] kafByteArray = kafToString.getBytes("UTF-8");
-    outToClient.write(kafByteArray);
-  }
-
+  private void sendDataToClient(BufferedWriter outToClient, String kafToString) throws IOException {
+	    outToClient.write(kafToString);
+	    outToClient.close();
+	  }
+  
   /**
    * OTE annotator.
    * 
